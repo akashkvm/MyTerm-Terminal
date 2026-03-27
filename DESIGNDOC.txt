@@ -1,0 +1,231 @@
+========================
+MyTerm - Design Document
+========================
+
+1. Overview
+-----------
+MyTerm is a custom terminal emulator built using C, X11, and POSIX system calls. It supports GUI input/output, multiple commands, pipes, redirection, and several advanced shell features including line navigation, signal handling, and searchable history.
+
+2. File Structure
+-----------------
+- main.c              : Entry point, initializes GUI and shell loop, signal handling
+- x11_gui.c           : Handles all X11 window rendering, input display, cursor movement, key handling
+- shell_process.c     : Manages shell process creation, communication, and lifecycle
+- text_buffer.c       : Manages terminal output buffer, scrolling, and text display
+- tab_manager.c       : Handles multiple tab creation, switching, and management
+- external_commands.c : Executes commands, manages pipes, redirections, built-ins, and history
+- myterm.h            : Header file containing all structures, constants, and function declarations
+- Makefile            : Build configuration for compiling the MyTerm executable
+
+3. MyTerm Terminal: Feature Implementation Details
+--------------------------------------------------
+
+3.1. Terminal Color Customization and Dynamic Text Color Change
+----------------------------------------------------------------
+
+Background Black and Upper Tab White:
+
+-> File: `gui.c`
+-> Libraries/Functions: X11 (`XCreateSimpleWindow`, `XMapWindow`, `XAllocColor`, `XFillRectangle`)
+-> Implementation:
+
+  - Created terminal window using `XCreateSimpleWindow` and mapped with `XMapWindow`.
+  - Allocated black color for background using `XAllocColor`.
+  - Drew white rectangle at top using `XFillRectangle` for tab header.
+  - Set default text foreground color to white using `XSetForeground`.
+
+Dynamic Text Color Change (White → Green on Enter):
+
+-> File: `gui.c`
+-> Functions/Libraries: `handle_keypress()`, `XSetForeground`, `XDrawString`
+-> Implementation:
+
+  - Input appears white by default using `XDrawString`.
+  - On Enter key detected in `handle_keypress()`, changed text color to green using `XSetForeground`.
+  - After rendering output, reset text color to white for next input.
+  - Maintained session command history using a linked list or array, navigable via `^` key.
+
+
+3.2. Input/Output Redirection (`<`, `>`)
+-----------------------------------------
+
+-> File: `external_commands.c`
+-> Functions/Libraries: `dup2()`, `open()`, `close()`, `fork()`, `execvp()`
+-> Implementation:
+
+  - Parsed redirection symbols with `parse_command_with_redirection()`.
+  - Opened files using `open()` and redirected stdin/stdout using `dup2()`.
+  - Created child process using `fork()` and executed command with `execvp()`.
+  - Supported both input and output redirection simultaneously.
+
+
+3.3. Pipe Support (`|`)
+-----------------------
+
+-> File: `external_commands.c`
+-> Functions/Libraries: `pipe()`, `dup2()`, `fork()`, `execvp()`, `select()`
+-> Implementation:
+
+  - Split command into segments using `parse_pipe_command()`.
+  - Created pipes using `pipe()` and connected processes using `dup2()`.
+  - Forked processes with `fork()` and executed commands using `execvp()`.
+  - Used `select()` to monitor multiple outputs in real-time.
+
+
+3.4. MultiWatch Command
+-----------------------
+
+-> File: `external_commands.c`
+-> Functions/Libraries: `fork()`, `execvp()`, `select()`, `signal()`
+-> Implementation:
+
+  - Parsed multiple commands in bracket format with `parse_multiwatch_commands()`.
+  - Forked child processes using `fork()` and executed commands with `execvp()`.
+  - Monitored outputs of all processes using `select()`.
+  - Handled signals (e.g., `SIGINT`) to terminate commands gracefully.
+  
+
+3.5. Line Navigation (Ctrl+A / Ctrl+E)
+--------------------------------------
+
+-> File: `x11_gui.c`
+-> Functions/Libraries: `handle_keypress()`, X11 Key Symbols (`XK_a`, `XK_e`), `ControlMask`, `x11_redraw()`
+-> Implementation:
+
+  - Detected Ctrl+A/Ctrl+E using `handle_keypress()` and `ControlMask`.
+  - Moved cursor to start/end using `cursor_pos` variable.
+  - Refreshed display with `x11_redraw()`.
+
+
+3.6. Signal Handling (Ctrl+C / Ctrl+Z)
+--------------------------------------
+
+-> File: `x11_gui.c`
+-> Functions/Libraries: `kill()`, `SIGINT`, `SIGTSTP`, `handle_keypress()`
+-> Implementation:
+
+  - Detected Ctrl+C/Ctrl+Z in `handle_keypress()`.
+  - Sent signals to foreground process using `kill()`.
+  - Displayed background message for Ctrl+Z using GUI update functions.
+
+
+3.7. History and Ctrl+R Search
+------------------------------
+
+-> File: `external_commands.c`, `x11_gui.c`
+-> Functions/Libraries: `save_command_to_history()`, `execute_history_command()`, `trim_history_file()`, `find_exact_match()`, `find_and_print_best_substring_matches()`, `handle_history_search()`
+-> Implementation:
+
+  - Commands saved to `.myterm_history` file using standard file I/O (`fopen`, `fprintf`, `fclose`).
+  - Displayed last 1000 commands using `execute_history_command()`.
+  - Ctrl+R search implemented using string matching functions.
+  - Current session command history maintained in memory (array or linked list) and navigable using `^` key.
+
+
+3.8. Built-in Commands
+----------------------
+
+-> File: `external_commands.c`
+-> Commands: `cd`, `exit`, `pwd`, `echo`, `history`, `multiWatch`
+-> Implementation:
+
+  - Implemented with system calls: `chdir()` for `cd`, `getcwd()` for `pwd`, `printf()` for `echo`.
+  - `multiWatch` uses `fork()`, `execvp()`, and `select()`.
+
+
+3.9. GUI and Input Handling
+---------------------------
+
+-> File: `x11_gui.c`
+-> Functions/Libraries: `XCreateWindow`, `XMapWindow`, `XNextEvent`, `Xutf8DrawString()`, cursor management routines
+-> Implementation:
+
+  - Window creation and event loop using X11 functions.
+  - Unicode input using `Xutf8DrawString()`.
+  - Handled multiline input, backslash continuation, tab switching, and cursor management.
+
+
+3.10. Process Management
+------------------------
+
+-> File: `shell_process.c`
+-> Functions: `shell_process_start()`, `shell_process_write()`, `shell_process_read()`, `shell_process_handle_output()`
+-> Implementation:
+
+  - Started shell process with pipes.
+  - Sent commands via `shell_process_write()` and read outputs with `shell_process_read()`.
+  - Processed outputs and cleaned up resources.
+
+
+3.11. Text Buffer Management
+----------------------------
+
+-> File: `text_buffer.c`
+-> Functions: `text_buffer_init()`, `text_buffer_add_line()`, `text_buffer_scroll()`, `text_buffer_clear()`
+-> Implementation:
+
+  - Initialized buffer with `text_buffer_init()`.
+  - Added lines using `text_buffer_add_line()`.
+  - Scrolled content using `text_buffer_scroll()`.
+  - Cleared buffer using `text_buffer_clear()`, optimized for memory.
+
+
+4. Architecture Design
+----------------------
+
+4.1 Main Application Loop
+-------------------------
+- main.c contains the primary event loop
+- Handles X11 events, shell output, and process monitoring
+- Uses select() for efficient I/O multiplexing
+- Manages application lifecycle and cleanup
+
+4.2 Event-Driven Architecture
+-----------------------------
+- X11 event handling for user input
+- File descriptor monitoring for shell output
+- Signal handling for process control
+- Asynchronous output processing
+
+4.3 Modular Design
+------------------
+- Clear separation of concerns between modules
+- GUI handling separate from command execution
+- Process management isolated from input handling
+- History management independent of core functionality
+
+5. Data Structures
+------------------
+
+5.1 MyTermApp Structure
+-----------------------
+- Contains X11 display, window, and graphics context
+- Manages tabs, text buffer, and clipboard
+- Stores application state and configuration
+
+5.2 Tab Structure
+-----------------
+- Represents individual terminal tabs
+- Contains shell process information and pipes
+- Manages input buffer, cursor position, and history
+- Supports multiline input and text selection
+
+5.3 TextBuffer Structure
+------------------------
+- Manages terminal output display
+- Handles scrolling and line management
+- Efficient storage for terminal history
+
+6. Dependencies
+----------------
+- X11 development libraries (libX11-dev)
+- POSIX system calls (fork, exec, pipe, select)
+- Standard C library functions
+- Unicode support libraries
+
+7. Build System
+----------------
+- Makefile with proper dependency management
+- Compiler flags for debugging and optimization
+- Clean target for removing build artifacts
+- Proper linking with X11 libraries
